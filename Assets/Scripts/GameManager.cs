@@ -8,14 +8,14 @@ public class GameManager : MonoBehaviour
     public enum GameState
     {
         WaitingForThrow,
-        SelectingPiece,
         MovingPiece,
         GameOver
     }
 
-    public GameState CurrentState { get; private set; }
-    public int CurrentPlayer { get; private set; }
-    public int NumberOfPlayers = 2;
+    private GameState currentState;
+    private int currentPlayerIndex = 0;
+    private int currentMoveCount = 0;
+    private Piece selectedPiece;
 
     private void Awake()
     {
@@ -27,46 +27,82 @@ public class GameManager : MonoBehaviour
         else
         {
             Destroy(gameObject);
+            return;
         }
+    }
 
+    private void Start()
+    {
         InitializeGame();
     }
 
     private void InitializeGame()
     {
-        CurrentPlayer = 0;
-        CurrentState = GameState.WaitingForThrow;
-        Debug.Log($"게임 시작! 플레이어 {CurrentPlayer + 1}의 턴입니다.");
+        currentState = GameState.WaitingForThrow;
+        currentPlayerIndex = 0;
+        Debug.Log($"게임 시작! 플레이어 {currentPlayerIndex + 1}의 차례입니다.");
     }
 
     public void OnYutThrown(int moveCount)
     {
-        if (CurrentState != GameState.WaitingForThrow) return;
+        if (currentState != GameState.WaitingForThrow) return;
 
-        Debug.Log($"윷 결과: {GetYutResultName(moveCount)} ({moveCount}칸)");
-        CurrentState = GameState.SelectingPiece;
+        currentMoveCount = moveCount;
+        Debug.Log($"플레이어 {currentPlayerIndex + 1}이(가) {GetYutName(moveCount)}을(를) 던졌습니다!");
+
+        // 말 선택 UI 표시 또는 자동으로 말 선택
+        SelectPiece();
     }
 
-    public void OnPieceSelected(Piece piece, int moveCount)
+    private void SelectPiece()
     {
-        if (CurrentState != GameState.SelectingPiece) return;
+        var playerPieces = PieceManager.Instance.GetPlayerPieces(currentPlayerIndex);
+        if (playerPieces == null || playerPieces.Count == 0)
+        {
+            Debug.LogError("선택할 수 있는 말이 없습니다!");
+            return;
+        }
 
-        CurrentState = GameState.MovingPiece;
-        piece.Move(moveCount);
+        // 임시로 첫 번째 말을 선택
+        selectedPiece = playerPieces[0];
+        MoveSelectedPiece();
     }
 
-    public void OnPieceMoveComplete()
+    private void MoveSelectedPiece()
     {
-        if (CurrentState != GameState.MovingPiece) return;
+        if (selectedPiece == null) return;
 
-        // 다음 플레이어로 턴 전환
-        CurrentPlayer = (CurrentPlayer + 1) % NumberOfPlayers;
-        CurrentState = GameState.WaitingForThrow;
-        
-        Debug.Log($"플레이어 {CurrentPlayer + 1}의 턴입니다.");
+        currentState = GameState.MovingPiece;
+        selectedPiece.Move(currentMoveCount, OnPieceMoveComplete);
     }
 
-    private string GetYutResultName(int moveCount)
+    private void OnPieceMoveComplete()
+    {
+        // 승리 조건 확인
+        if (PieceManager.Instance.CheckWinCondition(currentPlayerIndex))
+        {
+            Debug.Log($"플레이어 {currentPlayerIndex + 1}이(가) 승리했습니다!");
+            currentState = GameState.GameOver;
+            return;
+        }
+
+        // 윷이나 모가 나왔으면 추가 이동
+        if (currentMoveCount == 4 || currentMoveCount == 5)
+        {
+            currentState = GameState.WaitingForThrow;
+            Debug.Log($"추가 이동! 플레이어 {currentPlayerIndex + 1}이(가) 다시 윷을 던집니다.");
+            YutSystem.Instance.ThrowYut();
+        }
+        else
+        {
+            // 다음 플레이어로 턴 넘기기
+            currentPlayerIndex = (currentPlayerIndex + 1) % 2;
+            currentState = GameState.WaitingForThrow;
+            Debug.Log($"플레이어 {currentPlayerIndex + 1}의 차례입니다.");
+        }
+    }
+
+    private string GetYutName(int moveCount)
     {
         switch (moveCount)
         {
